@@ -1,9 +1,12 @@
 from django.db import IntegrityError
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.forms import UserCreationForm, AuthenticationForm
 from django.contrib.auth.models import User
 from django.contrib.auth import login, logout, authenticate
 from todo_app.forms import TodoForm
+from todo_app.models import Todo
+from django.utils import timezone
+from django.contrib.auth.decorators import login_required
 
 
 def home(request):
@@ -50,12 +53,14 @@ def signup_user(request):
             })
 
 
+@login_required
 def logout_user(request):
     if request.method == 'POST':
         logout(request)
         return redirect('home')
 
 
+@login_required
 def create_todo(request):
     if request.method == 'GET':
         return render(request, 'todo_app/create_todo.html', {'form': TodoForm()})
@@ -74,5 +79,45 @@ def create_todo(request):
                           )
 
 
+@login_required
 def current_todo(request):
-    return render(request, 'todo_app/current_todo.html')
+    todos = Todo.objects.filter(user=request.user, completed__isnull=True)
+    return render(request, 'todo_app/current_todo.html', {'todos': todos})
+
+
+@login_required
+def completed_todo(request):
+    todos = Todo.objects.filter(user=request.user, completed__isnull=False).order_by('completed')
+    return render(request, 'todo_app/completed_todo.html', {'todos': todos})
+
+
+@login_required
+def view_todo(request, todo_pk):
+    todo = get_object_or_404(Todo, pk=todo_pk, user=request.user)
+    form = TodoForm(instance=todo)
+    if request.method == 'GET':
+        return render(request, 'todo_app/view_todo.html', {'todo': todo, 'form': form})
+    else:
+        try:
+            form = TodoForm(request.POST, instance=todo)
+            form.save()
+            return redirect('current_todo')
+        except ValueError:
+            return render(request, 'todo_app/view_todo.html', {'todo': todo, 'form': form, 'error': 'Bad info'})
+
+
+@login_required
+def complete_todo(request, todo_pk):
+    todo = get_object_or_404(Todo, pk=todo_pk, user=request.user)
+    if request.method == 'POST':
+        todo.completed = timezone.now()
+        todo.save()
+        return redirect('current_todo')
+
+
+@login_required
+def delete_todo(request, todo_pk):
+    todo = get_object_or_404(Todo, pk=todo_pk, user=request.user)
+    if request.method == 'POST':
+        todo.delete()
+        return redirect('current_todo')
